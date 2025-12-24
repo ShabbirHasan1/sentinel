@@ -141,6 +141,7 @@ jobs:
         with:
           script: |
             const artifactUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const shortSha = '${{ github.event.pull_request.head.sha }}'.substring(0, 7);
 
             // Check if we already commented
             const comments = await github.rest.issues.listComments({
@@ -160,7 +161,7 @@ jobs:
 
             **Build Details:**
             - Status: ✅ Success
-            - Commit: \`${{ github.event.pull_request.head.sha.substring(0, 7) }}\`
+            - Commit: \`${shortSha}\`
             - [View Build Artifacts](${artifactUrl})
 
             **To preview locally:**
