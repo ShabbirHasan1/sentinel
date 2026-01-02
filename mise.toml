@@ -232,7 +232,7 @@ description = "Generate example configuration"
 run = """
 cat > config/example.kdl << 'EOF'
 // Example Sentinel Configuration
-server {
+system {
     worker-threads 4
     max-connections 10000
 }

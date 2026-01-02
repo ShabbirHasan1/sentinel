@@ -6,7 +6,7 @@
 // - Agent failure handling
 // - Upstream failover testing
 
-server {
+system {
     worker-threads 2
     max-connections 1000
     graceful-shutdown-timeout-secs 10

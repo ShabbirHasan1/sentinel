@@ -2,7 +2,7 @@
 // Minimal config that starts the proxy without requiring a backend
 // Override by mounting your config to /etc/sentinel/config.kdl
 
-server {
+system {
     worker-threads 0  // auto-detect CPU cores
     max-connections 10000
     graceful-shutdown-timeout-secs 30

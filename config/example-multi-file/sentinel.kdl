@@ -9,7 +9,7 @@ metadata {
 }
 
 // Global server configuration
-server {
+system {
     worker-threads 4
     graceful-shutdown-timeout "30s"
     pid-file "/var/run/sentinel.pid"

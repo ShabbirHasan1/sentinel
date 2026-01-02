@@ -1,7 +1,7 @@
 // Test configuration for WAF agent config block
 // Tests that the proxy sends Configure event to agent
 
-server {
+system {
     worker-threads 2
     max-connections 1000
     graceful-shutdown-timeout-secs 5

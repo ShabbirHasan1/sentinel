@@ -3,7 +3,7 @@
 // Minimal configuration for extended stability testing.
 // Exercises core proxy functionality without external agents.
 
-server {
+system {
     worker-threads 2
     max-connections 10000
     graceful-shutdown-timeout-secs 30

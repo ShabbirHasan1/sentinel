@@ -1,7 +1,7 @@
 // Sentinel Proxy Configuration for Docker Benchmarking
 // Simple config for performance testing
 
-server {
+system {
     worker-threads 0  // auto-detect CPU cores
     max-connections 10000
     graceful-shutdown-timeout-secs 30

@@ -10,7 +10,7 @@ metadata {
 }
 
 // Production server settings
-server {
+system {
     worker-threads 16  // More workers for production
     graceful-shutdown-timeout "60s"  // Longer graceful shutdown
     pid-file "/var/run/sentinel/sentinel.pid"

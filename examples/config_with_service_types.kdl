@@ -1,7 +1,7 @@
 // Sentinel Configuration Example with Service Types
 // This example demonstrates web, API, and static file serving routes
 
-server {
+system {
     worker_threads 4
     max_connections 10000
     graceful_shutdown_timeout_secs 30
