@@ -1,0 +1,314 @@
+// Example: API Schema Validation Configuration
+//
+// This example demonstrates how to configure JSON Schema validation
+// for API routes in Sentinel. Supports both OpenAPI/Swagger files
+// and inline JSON schema definitions.
+
+// Server Configuration
+server {
+    workers 4
+    daemon #false
+}
+
+// Listeners
+listeners {
+    listener "http" {
+        address "0.0.0.0:8080"
+        protocol "http"
+    }
+}
+
+// Upstreams
+upstreams {
+    upstream "api-backend" {
+        targets {
+            target {
+                address "127.0.0.1:3001"
+                weight 1
+            }
+        }
+        load-balancing "round_robin"
+        health-check {
+            type "http" {
+                path "/health"
+                expected-status 200
+            }
+            interval-secs 10
+            timeout-secs 5
+            healthy-threshold 2
+            unhealthy-threshold 3
+        }
+    }
+}
+
+// Routes with API Schema Validation
+routes {
+    // Example 1: API route with OpenAPI/Swagger file
+    route "api-v1-with-openapi" {
+        priority "high"
+
+        matches {
+            path-prefix "/api/v1"
+        }
+
+        upstream "api-backend"
+
+        // API schema validation using OpenAPI spec file
+        api-schema {
+            // Path to OpenAPI 3.0 or Swagger 2.0 spec (YAML or JSON)
+            schema-file "/etc/sentinel/schemas/api-v1-openapi.yaml"
+
+            // Validate incoming requests against the spec
+            validate-requests #true
+
+            // Optionally validate responses (useful for development)
+            validate-responses #false
+
+            // Strict mode: fail on additional properties not in schema
+            strict-mode #false
+        }
+    }
+
+    // Example 2: API route with inline JSON Schema for requests
+    route "user-registration" {
+        priority "high"
+
+        matches {
+            path "/api/register"
+        }
+
+        upstream "api-backend"
+
+        // Inline request schema validation
+        api-schema {
+            validate-requests #true
+            validate-responses #false
+
+            // Define JSON Schema inline using KDL syntax
+            request-schema {
+                type "object"
+
+                properties {
+                    email {
+                        type "string"
+                        format "email"
+                        description "User email address"
+                    }
+                    password {
+                        type "string"
+                        minLength 8
+                        maxLength 128
+                        description "User password (min 8 characters)"
+                    }
+                    username {
+                        type "string"
+                        minLength 3
+                        maxLength 32
+                        pattern "^[a-zA-Z0-9_-]+$"
+                    }
+                    age {
+                        type "integer"
+                        minimum 13
+                        maximum 120
+                    }
+                    terms_accepted {
+                        type "boolean"
+                    }
+                }
+
+                // Required fields
+                required "email" "password" "username" "terms_accepted"
+            }
+        }
+    }
+
+    // Example 3: API route with both request and response schema
+    route "user-profile" {
+        priority "high"
+
+        matches {
+            path-prefix "/api/profile"
+        }
+
+        upstream "api-backend"
+
+        api-schema {
+            validate-requests #true
+            validate-responses #true
+            strict-mode #true
+
+            // Request schema for updates
+            request-schema {
+                type "object"
+                properties {
+                    display_name {
+                        type "string"
+                        minLength 1
+                        maxLength 100
+                    }
+                    bio {
+                        type "string"
+                        maxLength 500
+                    }
+                    avatar_url {
+                        type "string"
+                        format "uri"
+                    }
+                }
+                // At least one field required for update
+                minProperties 1
+            }
+
+            // Response schema for validation
+            response-schema {
+                type "object"
+                properties {
+                    id {
+                        type "string"
+                        format "uuid"
+                    }
+                    email {
+                        type "string"
+                        format "email"
+                    }
+                    username {
+                        type "string"
+                    }
+                    display_name {
+                        type "string"
+                    }
+                    bio {
+                        type "string"
+                    }
+                    avatar_url {
+                        type "string"
+                        format "uri"
+                    }
+                    created_at {
+                        type "string"
+                        format "date-time"
+                    }
+                    updated_at {
+                        type "string"
+                        format "date-time"
+                    }
+                }
+                required "id" "email" "username" "created_at"
+            }
+        }
+    }
+
+    // Example 4: Complex nested schema for API
+    route "api-complex" {
+        priority "high"
+
+        matches {
+            path "/api/orders"
+        }
+
+        upstream "api-backend"
+
+        api-schema {
+            validate-requests #true
+            strict-mode #true
+
+            request-schema {
+                type "object"
+                properties {
+                    customer {
+                        type "object"
+                        properties {
+                            name {
+                                type "string"
+                                minLength 1
+                            }
+                            email {
+                                type "string"
+                                format "email"
+                            }
+                            phone {
+                                type "string"
+                                pattern "^\\+?[1-9]\\d{1,14}$"
+                            }
+                        }
+                        required "name" "email"
+                    }
+                    items {
+                        type "array"
+                        minItems 1
+                        items {
+                            type "object"
+                            properties {
+                                product_id {
+                                    type "string"
+                                }
+                                quantity {
+                                    type "integer"
+                                    minimum 1
+                                }
+                                price {
+                                    type "number"
+                                    minimum 0
+                                }
+                            }
+                            required "product_id" "quantity" "price"
+                        }
+                    }
+                    shipping_address {
+                        type "object"
+                        properties {
+                            street {
+                                type "string"
+                            }
+                            city {
+                                type "string"
+                            }
+                            state {
+                                type "string"
+                                minLength 2
+                                maxLength 2
+                            }
+                            zip {
+                                type "string"
+                                pattern "^\\d{5}(-\\d{4})?$"
+                            }
+                            country {
+                                type "string"
+                                enum "US" "CA" "MX"
+                            }
+                        }
+                        required "street" "city" "state" "zip" "country"
+                    }
+                }
+                required "customer" "items" "shipping_address"
+            }
+        }
+    }
+
+    // Example 5: Minimal API route (just schema file reference)
+    route "simple-api" {
+        matches {
+            path-prefix "/api/v2"
+        }
+
+        upstream "api-backend"
+
+        // Simplest configuration - just reference a schema file
+        api-schema {
+            schema-file "/etc/sentinel/schemas/api-v2.json"
+        }
+    }
+}
+
+// Observability
+observability {
+    tracing {
+        enabled #true
+        backend "stdout"
+    }
+
+    metrics {
+        enabled #true
+        endpoint "/metrics"
+    }
+}

@@ -35,6 +35,9 @@ pub fn parse_routes(node: &kdl::KdlNode) -> Result<Vec<RouteConfig>> {
                 // Parse static-files
                 let static_files = parse_static_file_config_opt(child)?;
 
+                // Parse api-schema
+                let api_schema = parse_api_schema_config_opt(child)?;
+
                 // Parse filters
                 let filters = parse_route_filter_refs(child)?;
 
@@ -60,6 +63,8 @@ pub fn parse_routes(node: &kdl::KdlNode) -> Result<Vec<RouteConfig>> {
                     ServiceType::Static
                 } else if builtin_handler.is_some() {
                     ServiceType::Builtin
+                } else if api_schema.is_some() {
+                    ServiceType::Api
                 } else {
                     ServiceType::Web
                 };
@@ -92,7 +97,7 @@ pub fn parse_routes(node: &kdl::KdlNode) -> Result<Vec<RouteConfig>> {
                     circuit_breaker: None,
                     retry_policy: None,
                     static_files,
-                    api_schema: None,
+                    api_schema,
                     error_pages: None,
                     websocket: get_bool_entry(child, "websocket").unwrap_or(false),
                     websocket_inspection: get_bool_entry(child, "websocket-inspection")
@@ -318,5 +323,94 @@ fn parse_cache_config(node: &kdl::KdlNode) -> Result<RouteCacheConfig> {
         cacheable_status_codes,
         vary_headers,
         ignore_query_params,
+    })
+}
+
+/// Parse optional API schema configuration from a route
+fn parse_api_schema_config_opt(node: &kdl::KdlNode) -> Result<Option<ApiSchemaConfig>> {
+    if let Some(route_children) = node.children() {
+        if let Some(api_schema_node) = route_children.get("api-schema") {
+            return Ok(Some(parse_api_schema_config(api_schema_node)?));
+        }
+    }
+    Ok(None)
+}
+
+/// Parse API schema configuration block
+///
+/// Example KDL:
+/// ```kdl
+/// api-schema {
+///     schema-file "/etc/sentinel/schemas/api-v1.yaml"
+///     validate-requests true
+///     validate-responses false
+///     strict-mode false
+/// }
+/// ```
+///
+/// Or with inline JSON schema:
+/// ```kdl
+/// api-schema {
+///     validate-requests true
+///     request-schema {
+///         type "object"
+///         properties {
+///             email {
+///                 type "string"
+///             }
+///             password {
+///                 type "string"
+///                 minLength 8
+///             }
+///         }
+///         required "email" "password"
+///     }
+/// }
+/// ```
+fn parse_api_schema_config(node: &kdl::KdlNode) -> Result<ApiSchemaConfig> {
+    let schema_file = get_string_entry(node, "schema-file").map(PathBuf::from);
+    let validate_requests = get_bool_entry(node, "validate-requests").unwrap_or(true);
+    let validate_responses = get_bool_entry(node, "validate-responses").unwrap_or(false);
+    let strict_mode = get_bool_entry(node, "strict-mode").unwrap_or(false);
+
+    // Parse inline request schema if present
+    let request_schema = if let Some(children) = node.children() {
+        if let Some(schema_node) = children.get("request-schema") {
+            Some(super::kdl_to_json(schema_node)?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Parse inline response schema if present
+    let response_schema = if let Some(children) = node.children() {
+        if let Some(schema_node) = children.get("response-schema") {
+            Some(super::kdl_to_json(schema_node)?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    trace!(
+        has_schema_file = schema_file.is_some(),
+        has_request_schema = request_schema.is_some(),
+        has_response_schema = response_schema.is_some(),
+        validate_requests = validate_requests,
+        validate_responses = validate_responses,
+        strict_mode = strict_mode,
+        "Parsed API schema configuration"
+    );
+
+    Ok(ApiSchemaConfig {
+        schema_file,
+        request_schema,
+        response_schema,
+        validate_requests,
+        validate_responses,
+        strict_mode,
     })
 }

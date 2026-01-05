@@ -285,8 +285,8 @@ fn kdl_to_json(node: &kdl::KdlNode) -> Result<serde_json::Value> {
                 // Has properties or nested children
                 serde_json::Value::Object(child_obj)
             } else if args.len() == 1 {
-                // Single argument
-                args.into_iter().next().unwrap()
+                // Single argument - safe to unwrap since we checked len == 1
+                args.into_iter().next().expect("args has exactly one element")
             } else if !args.is_empty() {
                 // Multiple arguments -> array
                 serde_json::Value::Array(args)
@@ -509,8 +509,9 @@ fn parse_body_streaming_mode(mode: &str, agent_id: &str) -> Result<BodyStreaming
         "buffer" => Ok(BodyStreamingMode::Buffer),
         "stream" => Ok(BodyStreamingMode::Stream),
         _ if mode.starts_with("hybrid:") => {
-            // Parse "hybrid:1024" format
-            let threshold_str = mode.strip_prefix("hybrid:").unwrap();
+            // Parse "hybrid:1024" format - safe to unwrap since we checked starts_with
+            let threshold_str = mode.strip_prefix("hybrid:")
+                .expect("mode starts with 'hybrid:' prefix");
             let threshold: usize = threshold_str.parse().map_err(|_| {
                 anyhow::anyhow!(
                     "Agent '{}': invalid hybrid threshold '{}', expected number",
@@ -1742,5 +1743,144 @@ mod tests {
         // Verify default max-concurrent-calls (100)
         let auth_agent = config.agents.iter().find(|a| a.id == "auth").unwrap();
         assert_eq!(auth_agent.max_concurrent_calls, 100);
+    }
+
+    #[test]
+    fn test_parse_api_schema_with_file() {
+        let kdl = r#"
+            server {
+                worker-threads 4
+            }
+
+            listeners {
+                listener "http" {
+                    address "0.0.0.0:8080"
+                    protocol "http"
+                }
+            }
+
+            upstreams {
+                upstream "api-backend" {
+                    targets {
+                        target {
+                            address "127.0.0.1:3001"
+                            weight 1
+                        }
+                    }
+                    load-balancing "round_robin"
+                }
+            }
+
+            routes {
+                route "api-route" {
+                    matches {
+                        path-prefix "/api"
+                    }
+                    upstream "api-backend"
+
+                    api-schema {
+                        schema-file "/etc/sentinel/schemas/api-v1.yaml"
+                        validate-requests #true
+                        validate-responses #false
+                        strict-mode #true
+                    }
+                }
+            }
+        "#;
+
+        let config = Config::from_kdl(kdl).unwrap();
+
+        assert_eq!(config.routes.len(), 1);
+        let route = &config.routes[0];
+        assert_eq!(route.id, "api-route");
+        assert_eq!(route.service_type, crate::routes::ServiceType::Api);
+
+        let api_schema = route.api_schema.as_ref().unwrap();
+        assert_eq!(
+            api_schema.schema_file.as_ref().unwrap().to_str().unwrap(),
+            "/etc/sentinel/schemas/api-v1.yaml"
+        );
+        assert_eq!(api_schema.validate_requests, true);
+        assert_eq!(api_schema.validate_responses, false);
+        assert_eq!(api_schema.strict_mode, true);
+    }
+
+    #[test]
+    fn test_parse_api_schema_with_inline_schema() {
+        let kdl = r#"
+            server {
+                worker-threads 4
+            }
+
+            listeners {
+                listener "http" {
+                    address "0.0.0.0:8080"
+                    protocol "http"
+                }
+            }
+
+            upstreams {
+                upstream "api-backend" {
+                    targets {
+                        target {
+                            address "127.0.0.1:3001"
+                            weight 1
+                        }
+                    }
+                    load-balancing "round_robin"
+                }
+            }
+
+            routes {
+                route "user-registration" {
+                    matches {
+                        path "/api/register"
+                    }
+                    upstream "api-backend"
+
+                    api-schema {
+                        validate-requests #true
+                        request-schema {
+                            type "object"
+                            properties {
+                                email {
+                                    type "string"
+                                    format "email"
+                                }
+                                password {
+                                    type "string"
+                                    minLength 8
+                                }
+                            }
+                            required "email" "password"
+                        }
+                    }
+                }
+            }
+        "#;
+
+        let config = Config::from_kdl(kdl).unwrap();
+
+        assert_eq!(config.routes.len(), 1);
+        let route = &config.routes[0];
+        assert_eq!(route.id, "user-registration");
+        assert_eq!(route.service_type, crate::routes::ServiceType::Api);
+
+        let api_schema = route.api_schema.as_ref().unwrap();
+        assert_eq!(api_schema.validate_requests, true);
+        assert!(api_schema.request_schema.is_some());
+
+        let schema = api_schema.request_schema.as_ref().unwrap();
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"].is_object());
+        assert_eq!(schema["properties"]["email"]["type"], "string");
+        assert_eq!(schema["properties"]["email"]["format"], "email");
+        assert_eq!(schema["properties"]["password"]["minLength"], 8);
+
+        // Verify required array
+        let required = schema["required"].as_array().unwrap();
+        assert_eq!(required.len(), 2);
+        assert!(required.contains(&serde_json::Value::String("email".to_string())));
+        assert!(required.contains(&serde_json::Value::String("password".to_string())));
     }
 }
